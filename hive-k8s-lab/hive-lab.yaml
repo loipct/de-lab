@@ -1,0 +1,222 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hive-sample-data
+  namespace: de-lab
+data:
+  products.csv: |
+    1,Laptop Dell XPS,Electronics,25000000
+    2,Chuot khong day Logitech,Electronics,450000
+    3,Ban phim co,Electronics,1200000
+    4,Ghe van phong,Furniture,3500000
+    5,Ban lam viec,Furniture,4200000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hive-warehouse-pvc
+  namespace: de-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hive-core-site
+  namespace: de-lab
+data:
+  core-site.xml: |
+    <configuration>
+        <property>
+            <name>fs.s3a.endpoint</name>
+            <value>http://minio:9000</value>
+        </property>
+        <property>
+            <name>fs.s3a.access.key</name>
+            <value>539QOXF7J5K21YZT2EQU</value>
+        </property>
+        <property>
+            <name>fs.s3a.secret.key</name>
+            <value>9MCwwVgWC9sEu7pmcco3+3+jZpg2VxnCn6OVeEoM</value>
+        </property>
+        <property>
+            <name>fs.s3a.path.style.access</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>fs.s3a.connection.ssl.enabled</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>fs.s3a.impl</name>
+            <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+        </property>
+    </configuration>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-metastore
+  namespace: de-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-metastore
+  template:
+    metadata:
+      labels:
+        app: hive-metastore
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: download-libs
+        image: alpine:3.18
+        command:
+          - sh
+          - -c
+          - |
+            wget -O /ext-libs/postgres.jar https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
+            wget -O /ext-libs/hadoop-aws-3.3.2.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar
+            wget -O /ext-libs/aws-java-sdk-bundle-1.11.1026.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar
+        volumeMounts:
+        - name: extra-libs
+          mountPath: /ext-libs
+      containers:
+      - name: hive-metastore
+        image: apache/hive:4.0.0
+        env:
+        - name: SERVICE_NAME
+          value: metastore
+        - name: DB_DRIVER
+          value: postgres
+        - name: SERVICE_OPTS
+          value: >-
+            -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+            -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres-db:5432/metastore_db
+            -Djavax.jdo.option.ConnectionUserName=hive
+            -Djavax.jdo.option.ConnectionPassword=hive
+        ports:
+        - containerPort: 9083
+        volumeMounts:
+        - name: extra-libs
+          mountPath: /opt/hive/lib/postgres.jar
+          subPath: postgres.jar
+        - name: extra-libs
+          mountPath: /opt/hive/lib/hadoop-aws-3.3.2.jar
+          subPath: hadoop-aws-3.3.2.jar
+        - name: extra-libs
+          mountPath: /opt/hive/lib/aws-java-sdk-bundle-1.11.1026.jar
+          subPath: aws-java-sdk-bundle-1.11.1026.jar
+        - name: hive-core-site-volume
+          mountPath: /opt/hive/conf/core-site.xml
+          subPath: core-site.xml
+        - name: sample-data-volume
+          mountPath: /opt/hive/sample-data
+        - name: warehouse-storage
+          mountPath: /opt/hive/data/warehouse
+      volumes:
+      - name: extra-libs
+        emptyDir: {}
+      - name: hive-core-site-volume
+        configMap:
+          name: hive-core-site
+      - name: sample-data-volume
+        configMap:
+          name: hive-sample-data
+      - name: warehouse-storage
+        persistentVolumeClaim:
+          claimName: hive-warehouse-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-metastore
+  namespace: de-lab
+spec:
+  ports:
+  - port: 9083
+    targetPort: 9083
+  selector:
+    app: hive-metastore
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hiveserver2
+  namespace: de-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hiveserver2
+  template:
+    metadata:
+      labels:
+        app: hiveserver2
+    spec:
+      securityContext:
+        fsGroup: 1000
+      volumes:
+      - name: sample-data-volume
+        configMap:
+          name: hive-sample-data
+      - name: warehouse-storage
+        persistentVolumeClaim:
+          claimName: hive-warehouse-pvc
+      containers:
+      - name: hiveserver2
+        image: apache/hive:4.0.0
+        env:
+        - name: SERVICE_NAME
+          value: hiveserver2
+        - name: SERVICE_OPTS
+          value: >-
+            -Dhive.metastore.uris=thrift://hive-metastore:9083
+        - name: IS_RESUME
+          value: "true"
+        ports:
+        - name: hs2-thrift
+          containerPort: 10000
+        - name: hs2-web
+          containerPort: 10002
+        volumeMounts:
+        - name: sample-data-volume
+          mountPath: /opt/hive/sample-data
+        - name: warehouse-storage
+          mountPath: /opt/hive/data/warehouse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hiveserver2
+  namespace: de-lab
+spec:
+  type: NodePort
+  ports:
+  - name: hs2-thrift
+    port: 10000
+    targetPort: 10000
+    nodePort: 31000
+  - name: hs2-web
+    port: 10002
+    targetPort: 10002
+    nodePort: 31002
+  selector:
+    app: hiveserver2

@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trino-worker-config
+  namespace: de-lab
+data:
+  node.properties: |
+    node.environment=docker
+    node.data-dir=/data/trino
+  jvm.config: |
+    -server
+    -Xmx2G
+    -XX:InitialRAMPercentage=80
+    -XX:MaxRAMPercentage=80
+    -XX:G1HeapRegionSize=32M
+    -XX:+ExplicitGCInvokesConcurrent
+    -XX:+ExitOnOutOfMemoryError
+  config.properties: |
+    coordinator=false
+    http-server.http.port=8080
+    discovery.uri=http://trino-coordinator:8080
+  tpch.properties: |
+    connector.name=tpch
+    tpch.splits-per-node=4
+  postgres.properties: |
+    connector.name=postgresql
+    connection-url=jdbc:postgresql://postgres-db:5432/labdb
+    connection-user=labuser
+    connection-password=labpassword
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trino-worker
+  namespace: de-lab
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: trino-worker
+  template:
+    metadata:
+      labels:
+        app: trino-worker
+    spec:
+      containers:
+      - name: trino
+        image: trinodb/trino:440
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/trino
+      volumes:
+      - name: config-volume
+        configMap:
+          name: trino-worker-config
