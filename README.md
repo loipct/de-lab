@@ -73,10 +73,3 @@ kubectl port-forward svc/trino-coordinator -n de-lab 8080:8080
 # Kiểm tra catalog
 curl -sS -X POST "http://localhost:8080/v1/statement" -d "SHOW CATALOGS;"
 ```
-
-Lưu ý bảo mật
-- Không commit credentials thật vào repo. Sử dụng `kubectl create secret generic` hoặc Kubernetes Secrets.
-
-Script deploy nhanh (tùy chọn): tạo `deploy.sh` ở gốc repo với nội dung giống các lệnh trên.
-
-Nếu muốn, tôi sẽ tạo luôn `deploy.sh` và đặt quyền thực thi.
