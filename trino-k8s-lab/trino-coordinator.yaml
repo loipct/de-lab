@@ -58,14 +58,18 @@ data:
     connection-password=labpassword
 
   hive.properties: |
-    connector.name=hive
-    hive.metastore.uri=thrift://hive-metastore:9083
-    hive.s3.endpoint=http://minio:9000
-    hive.s3.aws-access-key=539QOXF7J5K21YZT2EQU
-    hive.s3.aws-secret-key=9MCwwVgWC9sEu7pmcco3+3+jZpg2VxnCn6OVeEoM
-    hive.s3.path-style-access=true
-    hive.non-managed-table-writes-enabled=true
-    hive.allow-drop-table=true
+    # Hive connector left intentionally empty for now.
+    # Add Hive metastore and MinIO (S3) deployment first, then
+    # populate this file with the required connector properties,
+    # for example:
+    # connector.name=hive
+    # hive.metastore.uri=thrift://hive-metastore:9083
+    # hive.s3.endpoint=http://minio:9000
+    # hive.s3.aws-access-key=<MINIO_ACCESS_KEY>
+    # hive.s3.aws-secret-key=<MINIO_SECRET_KEY>
+    # hive.s3.path-style-access=true
+    # hive.non-managed-table-writes-enabled=true
+    # hive.allow-drop-table=true
     
 ---
 apiVersion: v1
