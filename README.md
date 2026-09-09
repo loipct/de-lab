@@ -77,7 +77,7 @@ Tóm tắt: hướng dẫn ngắn để triển khai MinIO, tạo access/secret,
 Yêu cầu:
 - `kubectl` đã cấu hình tới cluster.
 - Namespace mặc định trong các manifest là `de-lab`.
-
+```
 1) Triển khai MinIO & tạo access/secret
 
 ```bash
