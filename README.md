@@ -1,6 +1,26 @@
-# Hướng dẫn triển khai (MinIO → Hive → Trino)
+# Dự án Data Lake cho dữ liệu CSKH và phân tích tương tác khách hàng
 
-Tóm tắt: file này hướng dẫn triển khai theo thứ tự MinIO, Hive metastore, rồi Trino (Postgres + coordinator + workers).
+Dự án này xây dựng một nền tảng dữ liệu theo hướng lakehouse để thu thập, lưu trữ và phân tích dữ liệu từ các nguồn liên quan đến chăm sóc khách hàng (CSKH) và hoạt động tương tác với khách hàng. Mục tiêu là tạo một kiến trúc dữ liệu có thể mở rộng theo thời gian, cho phép tích hợp nhiều nguồn dữ liệu khác nhau như call log, agent activity, ticket, CRM, phản hồi khách hàng, chat, email, và các dữ liệu vận hành liên quan.
+
+Hiện tại, hệ thống đang tập trung vào việc đồng bộ dữ liệu từ các nguồn MSSQL/warehouse vào MinIO theo dạng raw data có phân vùng theo ngày, sau đó có thể truy vấn qua Hive/Trino hoặc xử lý tiếp bằng Spark. Cấu trúc này giúp dễ dàng mở rộng sang nhiều nguồn dữ liệu khác trong tương lai mà không cần phá cấu trúc hiện có.
+
+Các thành phần chính của dự án:
+- MinIO: lưu trữ raw data dạng Parquet, theo từng bảng và phân vùng `year/month/day`
+- Airflow: điều phối và tự động hóa quá trình ingest dữ liệu
+- Hive metastore: quản lý metadata, schema và external tables
+- Trino: truy vấn nhanh trên dữ liệu data lake
+- Spark: xử lý ETL, join dữ liệu, tổng hợp KPI và xây dựng curated layer
+
+Mục tiêu kinh doanh:
+- kết nối dữ liệu từ nhiều nguồn liên quan đến CSKH
+- chuẩn hóa dữ liệu để phục vụ phân tích hiệu suất đội ngũ chăm sóc khách hàng
+- hỗ trợ báo cáo về cuộc gọi, thời gian xử lý, agent, SLA, chất lượng dịch vụ
+- tạo nền tảng mở cho các mô hình phân tích và BI trong tương lai
+
+Hướng phát triển tiếp theo:
+- tích hợp thêm nguồn dữ liệu CSKH như CRM, ticketing, chat, email, survey, feedback, call recording, IVR
+- xây dựng các layer raw → curated → analytics
+- mở rộng mô hình ETL/ELT để phục vụ báo cáo và dashboard cho bộ phận CSKH, vận hành và quản lý
 
 Yêu cầu:
 - `kubectl` đã cấu hình tới cluster.
