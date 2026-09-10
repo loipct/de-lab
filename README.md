@@ -5,11 +5,24 @@ Dự án này xây dựng một kiến trúc lakehouse cho dữ liệu chăm só
 ## Kiến trúc tổng quan
 
 - MinIO: kho dữ liệu raw / object storage dạng S3-compatible
-- Airflow: điều phối ingest dữ liệu
+- Airflow: điều phối ingest từ nguồn dữ liệu CSKH và đẩy dữ liệu vào MinIO
 - PostgreSQL: metadata và dữ liệu nghiệp vụ / metastore
 - Hive Metastore: quản lý metadata schema và external tables
 - Trino: truy vấn nhanh trên data lake
 - Spark: xử lý ETL / chuẩn hóa / tạo curated layer
+
+```mermaid
+flowchart LR
+    A[CSKH Sources\nCRM / Call / Agent / Ticket] --> B[Airflow]
+    B --> C[MinIO\nRaw Data S3]
+    C --> D[Hive Metastore]
+    E[PostgreSQL\nMetadata / Service Data] --> D
+    D --> F[Trino\nQuery Engine]
+    C --> G[Spark\nETL / Processing]
+    G --> C
+    F --> H[BI / Reporting / Analytics]
+    G --> H
+```
 
 ## Luồng cài đặt theo thứ tự
 
@@ -79,10 +92,12 @@ Dưới đây là trình tự triển khai hợp lý cho lab này. Mỗi bước
 
 8. Chạy ingest / validation
    - Điều kiện bắt buộc:
-     - dữ liệu raw đã có trong MinIO hoặc nguồn bên ngoài đã được tích hợp
-     - Airflow / pipeline đã được cấu hình đúng
+     - nguồn dữ liệu CSKH đã sẵn sàng để Airflow đọc
+     - MinIO đã chạy và bucket đích đã được cấu hình
+     - Airflow pipeline đã được cấu hình đúng để upload dữ liệu vào MinIO
    - Mục tiêu:
-     - ingest dữ liệu từ nguồn CSKH về lakehouse
+     - ingest dữ liệu từ nguồn CSKH lên MinIO raw layer
+     - sau đó dữ liệu sẽ được Hive / Trino / Spark đọc và xử lý tiếp
      - kiểm tra khả năng query, ETL và dashboard/reporting
 
 ## Tài liệu chi tiết theo thành phần
