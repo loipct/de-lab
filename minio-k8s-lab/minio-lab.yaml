@@ -45,9 +45,15 @@ spec:
         command: ["minio", "server", "/data", "--console-address", ":9001"]
         env:
         - name: MINIO_ROOT_USER
-          value: minioadmin
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: MINIO_ROOT_USER
         - name: MINIO_ROOT_PASSWORD
-          value: minioadmin123
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: MINIO_ROOT_PASSWORD
         ports:
         - containerPort: 9000
           name: s3-api
