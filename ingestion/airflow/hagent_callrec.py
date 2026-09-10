@@ -7,6 +7,7 @@ import boto3
 from botocore.client import Config
 
 from airflow import DAG
+from airflow.hooks.base import BaseHook
 from airflow.operators.python import PythonOperator
 from airflow.providers.microsoft.mssql.hooks.mssql import MsSqlHook
 
@@ -15,12 +16,10 @@ from airflow.providers.microsoft.mssql.hooks.mssql import MsSqlHook
 # ==============================================================================
 
 MSSQL_CONN_ID = "mssql_dwh_conn"
+MINIO_CONN_ID = "test_minio"  # Airflow connection ID chứa MinIO/S3 connection
 TABLES = ["call_rec", "hagent"]  # Danh sách các bảng cần đồng bộ
 DATE_COLUMN = "row_date"
 
-MINIO_ENDPOINT = "http://IP_NODE:30900"
-MINIO_ACCESS_KEY = "MINIO_ACCESS_KEY"
-MINIO_SECRET_KEY = "MINIO_SECRET_KEY"
 MINIO_BUCKET = "datalake-raw"
 
 # ==============================================================================
@@ -39,12 +38,19 @@ def extract_and_load_to_minio(**context):
     logging.info(f"Extracting data from MSSQL for range: {start_date} to {end_date}")
     
     mssql_hook = MsSqlHook(mssql_conn_id=MSSQL_CONN_ID)
-    
+    minio_conn = BaseHook.get_connection(MINIO_CONN_ID)
+
+    minio_endpoint = minio_conn.host or minio_conn.extra_dejson.get("endpoint_url")
+    if minio_endpoint and not minio_endpoint.startswith("http"):
+        minio_endpoint = f"http://{minio_endpoint}"
+    if minio_conn.port and minio_endpoint and ":" not in minio_endpoint.split("//", 1)[-1]:
+        minio_endpoint = f"{minio_endpoint}:{minio_conn.port}"
+
     s3_client = boto3.client(
         's3',
-        endpoint_url=MINIO_ENDPOINT,
-        aws_access_key_id=MINIO_ACCESS_KEY,
-        aws_secret_access_key=MINIO_SECRET_KEY,
+        endpoint_url=minio_endpoint,
+        aws_access_key_id=minio_conn.login,
+        aws_secret_access_key=minio_conn.password,
         config=Config(signature_version='s3v4'),
         region_name='us-east-1'
     )
