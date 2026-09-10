@@ -11,6 +11,8 @@ spark = (
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     .config("spark.sql.adaptive.enabled", "true")
+    .config("spark.sql.parquet.convertTimestampNano", "true")
+    .config("spark.sql.parquet.binaryAsString", "true")
     .getOrCreate()
 )
 
