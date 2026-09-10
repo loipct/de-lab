@@ -41,7 +41,7 @@ spark.sparkContext.setLogLevel("WARN")
 # ============================================================
 
 call_rec_schema = """
-    callid string,
+    callid long,
     anslogin string,
     duration double,
     year string,
