@@ -197,128 +197,13 @@ Spark được deploy theo namespace `de-lab` để chạy các job phân tích 
 kubectl apply -f spark-k8s-lab/spark-rbac.yaml
 ```
 
-Nội dung chính của file `spark-k8s-lab/spark-rbac.yaml`:
-
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: spark-operator-sa
-  namespace: de-lab
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: spark-operator-role
-  namespace: de-lab
-rules:
-- apiGroups: [""]
-  resources: ["pods", "services", "configmaps", "secrets"]
-  verbs: ["*"]
-- apiGroups: [""]
-  resources: ["persistentvolumeclaims"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: spark-operator-role-binding
-  namespace: de-lab
-subjects:
-- kind: ServiceAccount
-  name: spark-operator-sa
-  namespace: de-lab
-roleRef:
-  kind: Role
-  name: spark-operator-role
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: spark-operator-controller-role
-  namespace: de-lab
-rules:
-- apiGroups: ["", "sparkoperator.k8s.io"]
-  resources:
-    - "pods"
-    - "services"
-    - "configmaps"
-    - "secrets"
-    - "sparkapplications"
-    - "sparkapplications/status"
-    - "scheduledsparkapplications"
-    - "sparkconnects"
-  verbs: ["*"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: spark-operator-controller-rolebinding
-  namespace: de-lab
-subjects:
-- kind: ServiceAccount
-  name: spark-operator-controller
-  namespace: de-lab
-roleRef:
-  kind: Role
-  name: spark-operator-controller-role
-  apiGroup: rbac.authorization.k8s.io
-```
-
 ### 2) Deploy SparkApplication
 
 ```bash
 kubectl apply -f spark-k8s-lab/spark-application.yaml
 ```
 
-File `spark-k8s-lab/spark-application.yaml` dùng namespace `de-lab` và chạy job Python trên cluster Spark:
-
-```yaml
-apiVersion: sparkoperator.k8s.io/v1beta2
-kind: SparkApplication
-metadata:
-  name: hagent-analytics-job
-  namespace: de-lab
-
-spec:
-  type: Python
-  pythonVersion: "3"
-  mode: cluster
-
-  image: apache/spark:3.5.0
-  imagePullPolicy: IfNotPresent
-  sparkVersion: "3.5.0"
-
-  mainApplicationFile: "https://raw.githubusercontent.com/loipct/de-lab/main/spark-k8s-lab/job/job_analytics.py"
-
-  deps:
-    jars:
-      - "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar"
-      - "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar"
-
-  sparkConf:
-    spark.hadoop.fs.s3a.endpoint: "http://minio:9000"
-    spark.hadoop.fs.s3a.access.key: "<MINIO_ACCESS_KEY>"
-    spark.hadoop.fs.s3a.secret.key: "<MINIO_SECRET_KEY>"
-    spark.hadoop.fs.s3a.path.style.access: "true"
-    spark.hadoop.fs.s3a.connection.ssl.enabled: "false"
-    spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
-
-  restartPolicy:
-    type: OnFailure
-
-  driver:
-    cores: 1
-    coreLimit: "1200m"
-    memory: "1024m"
-    serviceAccount: spark-operator-sa
-
-  executor:
-    cores: 2
-    instances: 3
-    memory: "2048m"
-```
+File `spark-k8s-lab/spark-application.yaml` dùng namespace `de-lab` và chạy job Python trên cluster Spark
 
 ### 3) Kiểm tra job Spark
 
