@@ -4,6 +4,7 @@ from pyspark.sql import functions as F
 spark = (
     SparkSession.builder
     .appName("hagent_callrec_analytics_pipeline")
+    .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262")
     .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
     .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.secret.key", "minioadmin123")
