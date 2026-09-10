@@ -1,0 +1,7 @@
+.env
+*.secret
+secrets/
+**/secret*.yaml
+minio-k8s-lab/secrets/
+minio-k8s-lab/secrets/*.yaml
+.env.local

@@ -14,65 +14,6 @@ volumeBindingMode: WaitForFirstConsumer
 
 ---
 apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: trino-coordinator-base-config
-  namespace: de-lab
-data:
-  node.properties: |
-    node.environment=de_lab
-    node.id=coordinator-1
-    node.data-dir=/data/trino
-
-  jvm.config: |
-    -server
-    -Xmx1G
-    -XX:InitialRAMPercentage=80
-    -XX:MaxRAMPercentage=80
-    -XX:G1HeapRegionSize=32M
-    -XX:+ExplicitGCInvokesConcurrent
-    -XX:+ExitOnOutOfMemoryError
-
-  config.properties: |
-    coordinator=true
-    node-scheduler.include-coordinator=true
-    http-server.http.port=8080
-    discovery.uri=http://trino-coordinator:8080
-    
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: trino-coordinator-catalog-config
-  namespace: de-lab
-data:
-  tpch.properties: |
-    connector.name=tpch
-    tpch.splits-per-node=4
-
-  postgres.properties: |
-    connector.name=postgresql
-    connection-url=jdbc:postgresql://postgres-db:5432/labdb
-    connection-user=labuser
-    connection-password=labpassword
-
-  hive.properties: |
-    # Hive connector left intentionally empty for now.
-    # Add Hive metastore and MinIO (S3) deployment first, then
-    # populate this file with the required connector properties,
-    # for example:
-    # connector.name=hive
-    # hive.metastore.uri=thrift://hive-metastore:9083
-    # hive.s3.endpoint=http://minio:9000
-    # hive.s3.aws-access-key=<MINIO_ACCESS_KEY>
-    # hive.s3.aws-secret-key=<MINIO_SECRET_KEY>
-    # hive.s3.path-style-access=true
-    # hive.non-managed-table-writes-enabled=true
-    # hive.allow-drop-table=true
-    
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: trino-pvc
@@ -127,6 +68,28 @@ spec:
       containers:
         - name: trino
           image: trinodb/trino:440
+
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trino-credentials
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trino-credentials
+                  key: MINIO_SECRET_KEY
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
 
           ports:
             - name: http

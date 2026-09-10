@@ -33,40 +33,6 @@ spec:
       storage: 5Gi
 
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hive-core-site
-  namespace: de-lab
-data:
-  core-site.xml: |
-    <configuration>
-        <property>
-            <name>fs.s3a.endpoint</name>
-            <value>http://minio:9000</value>
-        </property>
-        <property>
-            <name>fs.s3a.access.key</name>
-            <value>539QOXF7J5K21YZT2EQU</value>
-        </property>
-        <property>
-            <name>fs.s3a.secret.key</name>
-            <value>9MCwwVgWC9sEu7pmcco3+3+jZpg2VxnCn6OVeEoM</value>
-        </property>
-        <property>
-            <name>fs.s3a.path.style.access</name>
-            <value>true</value>
-        </property>
-        <property>
-            <name>fs.s3a.connection.ssl.enabled</name>
-            <value>false</value>
-        </property>
-        <property>
-            <name>fs.s3a.impl</name>
-            <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
-        </property>
-    </configuration>
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -105,12 +71,26 @@ spec:
           value: metastore
         - name: DB_DRIVER
           value: postgres
+        - name: POSTGRES_HIVE_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_HIVE_USER
+        - name: POSTGRES_HIVE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_HIVE_PASSWORD
         - name: SERVICE_OPTS
           value: >-
             -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
             -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres-db:5432/metastore_db
-            -Djavax.jdo.option.ConnectionUserName=hive
-            -Djavax.jdo.option.ConnectionPassword=hive
+        command:
+          - /bin/sh
+          - -c
+          - |
+            export SERVICE_OPTS="${SERVICE_OPTS} -Djavax.jdo.option.ConnectionUserName=${POSTGRES_HIVE_USER} -Djavax.jdo.option.ConnectionPassword=${POSTGRES_HIVE_PASSWORD}"
+            exec /entrypoint.sh
         ports:
         - containerPort: 9083
         volumeMounts:
