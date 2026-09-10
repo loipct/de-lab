@@ -1,61 +1,100 @@
-Cài đặt Spark Operator qua Helm (hoặc file manifest), sau đó sử dụng lệnh `kubectl edit` để cấu hình chuyển đổi namespace sang `de-lab` (hoặc điều chỉnh trường watchedNamespaces/operatorNamespace phù hợp):
+## Cài đặt và kiểm tra Spark Operator
+
+Trước tiên, thêm repo Helm của Spark Operator và cập nhật danh sách chart:
 
 ```bash
 helm repo add spark-operator https://kubeflow.github.io/spark-operator
 helm repo update
+```
 
-helm install spark-operator spark-operator/spark-operator \
-  --namespace de-lab \
-  --set webhook.enable=true \
-  --set watchedNamespaces={de-lab}
+Trên cluster hiện tại, Spark Operator đã chạy ổn định dưới dạng các pod trong namespace `de-lab`, cụ thể là `spark-operator-controller` và `spark-operator-webhook`. Nếu cần chỉnh cấu hình của controller, phải edit đúng namespace `de-lab`, ví dụ:
 
-# Nếu cần chỉnh sửa trực tiếp cấu hình deployment của operator:
-kubectl edit deployment spark-operator -n de-lab
+```bash
+kubectl edit deployment spark-operator-controller -n de-lab
+```
+
+Không được edit ở namespace mặc định. Sau khi operator sẵn sàng, tiến hành tạo quyền truy cập cho Spark job trong namespace `de-lab`:
+
+```bash
+kubectl apply -f spark-k8s-lab/spark-rbac.yaml -n de-lab
 
 ```
 
 ---
 
-Tạo Phân quyền RBAC cho Spark Job trong `de-lab`:
+Tạo file YAML từ biến môi trường local rồi apply. Đây là cách đúng với SparkApplication CRD, vì `envVars` phải là map chuỗi và không hỗ trợ `valueFrom` ở định dạng Kubernetes SecretRef trong schema này. Nói ngắn gọn: phải `source ~/de-lab/.env.local` rồi render YAML bằng heredoc trước khi `kubectl apply`.
 
 ```bash
-kubectl apply -f spark-rbac.yaml -n de-lab
+source ~/de-lab/.env.local
 
+cat <<EOF | kubectl apply -f -
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: hagent-analytics-job
+  namespace: de-lab
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: apache/spark:3.5.0
+  imagePullPolicy: IfNotPresent
+  sparkVersion: "3.5.0"
+  mainApplicationFile: "https://raw.githubusercontent.com/loipct/de-lab/main/spark-k8s-lab/job/job_analytics.py"
+  deps:
+    jars:
+      - "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar"
+      - "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar"
+  sparkConf:
+    spark.hadoop.fs.s3a.endpoint: "http://minio:9000"
+    spark.hadoop.fs.s3a.path.style.access: "true"
+    spark.hadoop.fs.s3a.connection.ssl.enabled: "false"
+    spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+  restartPolicy:
+    type: OnFailure
+  driver:
+    cores: 1
+    coreLimit: "1200m"
+    memory: "1024m"
+    serviceAccount: spark-operator-sa
+    envVars:
+      AWS_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY}"
+  executor:
+    cores: 2
+    instances: 3
+    memory: "2048m"
+    envVars:
+      AWS_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY}"
+EOF
 ```
 
----
-
-Triển khai Spark Job (`spark-application.yaml`):
-
-```bash
-kubectl apply -f spark-application.yaml -n de-lab
-
-```
+> `sparkConf` chỉ giữ endpoint và cấu hình Hadoop không nhạy cảm. Access key và secret key phải được render từ `~/de-lab/.env.local` trước khi apply; nếu để nguyên file YAML raw, Kubernetes sẽ không expand `${VAR}` và Spark sẽ không nhận được AWS credential.
 
 ---
 
 Kiểm tra mọi thứ trong `de-lab`:
 
-* Kiểm tra xem Spark Operator và các thành phần đã chạy chưa:
+* Kiểm tra resource cluster và các pod đang chạy:
 
 ```bash
 kubectl get all -n de-lab
-
 ```
 
-* Kiểm tra trạng thái chạy của Spark Job:
+* Kiểm tra trạng thái chạy của Spark job:
 
 ```bash
 kubectl get sparkapplications -n de-lab
-
 ```
 
-* Xem log của Driver Job:
+* Xem log của driver job:
 
 ```bash
 kubectl logs -f hagent-analytics-job-driver -n de-lab
-
 ```
+
+> Nếu resource `spark-operator` không tồn tại, nghĩa là bạn đang cố thao tác vào deployment không được tạo trong lab này. Hướng dẫn đúng là dùng `spark-rbac.yaml` + `spark-application.yaml` như trên.
 
 ---
 
