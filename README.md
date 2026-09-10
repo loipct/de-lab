@@ -187,7 +187,181 @@ hive.s3.aws-secret-key=<MINIO_SECRET_KEY>
 hive.s3.path-style-access=true
 ```
 
+## Triển khai Spark trên Kubernetes (namespace `de-lab` + RBAC)
 
+Spark được deploy theo namespace `de-lab` để chạy các job phân tích trên MinIO. Trước khi chạy job, cần tạo ServiceAccount và quyền RBAC cho Spark operator / driver.
+
+### 1) Tạo RBAC cho namespace `de-lab`
+
+```bash
+kubectl apply -f spark-k8s-lab/spark-rbac.yaml
+```
+
+Nội dung chính của file `spark-k8s-lab/spark-rbac.yaml`:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark-operator-sa
+  namespace: de-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark-operator-role
+  namespace: de-lab
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark-operator-role-binding
+  namespace: de-lab
+subjects:
+- kind: ServiceAccount
+  name: spark-operator-sa
+  namespace: de-lab
+roleRef:
+  kind: Role
+  name: spark-operator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark-operator-controller-role
+  namespace: de-lab
+rules:
+- apiGroups: ["", "sparkoperator.k8s.io"]
+  resources:
+    - "pods"
+    - "services"
+    - "configmaps"
+    - "secrets"
+    - "sparkapplications"
+    - "sparkapplications/status"
+    - "scheduledsparkapplications"
+    - "sparkconnects"
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark-operator-controller-rolebinding
+  namespace: de-lab
+subjects:
+- kind: ServiceAccount
+  name: spark-operator-controller
+  namespace: de-lab
+roleRef:
+  kind: Role
+  name: spark-operator-controller-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### 2) Deploy SparkApplication
+
+```bash
+kubectl apply -f spark-k8s-lab/spark-application.yaml
+```
+
+File `spark-k8s-lab/spark-application.yaml` dùng namespace `de-lab` và chạy job Python trên cluster Spark:
+
+```yaml
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: hagent-analytics-job
+  namespace: de-lab
+
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+
+  image: apache/spark:3.5.0
+  imagePullPolicy: IfNotPresent
+  sparkVersion: "3.5.0"
+
+  mainApplicationFile: "https://raw.githubusercontent.com/loipct/de-lab/main/spark-k8s-lab/job/job_analytics.py"
+
+  deps:
+    jars:
+      - "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar"
+      - "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar"
+
+  sparkConf:
+    spark.hadoop.fs.s3a.endpoint: "http://minio:9000"
+    spark.hadoop.fs.s3a.access.key: "<MINIO_ACCESS_KEY>"
+    spark.hadoop.fs.s3a.secret.key: "<MINIO_SECRET_KEY>"
+    spark.hadoop.fs.s3a.path.style.access: "true"
+    spark.hadoop.fs.s3a.connection.ssl.enabled: "false"
+    spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+
+  restartPolicy:
+    type: OnFailure
+
+  driver:
+    cores: 1
+    coreLimit: "1200m"
+    memory: "1024m"
+    serviceAccount: spark-operator-sa
+
+  executor:
+    cores: 2
+    instances: 3
+    memory: "2048m"
+```
+
+### 3) Kiểm tra job Spark
+
+```bash
+kubectl get sparkapplication -n de-lab
+kubectl get pods -n de-lab | grep hagent-analytics-job
+kubectl logs -n de-lab <driver-pod-name> --tail=100
+```
+
+Nếu job chạy thành công, Spark sẽ đọc raw data từ MinIO, xử lý `hagent` + `call_rec`, rồi ghi kết quả vào bucket curated như:
+
+```text
+s3a://datalake-curated/agent_call_summary/
+```
+
+### 4) Lưu ý quan trọng
+
+- Tất cả resource Spark phải chạy trong cùng namespace `de-lab`.
+- `ServiceAccount` và `RoleBinding` phải khớp với namespace `de-lab` để driver/executor có quyền tạo pod, configmap và service.
+- `MINIO_ACCESS_KEY` và `MINIO_SECRET_KEY` nên được lưu dưới dạng Secret thay vì hardcode trực tiếp trong file YAML.
+- Nếu dùng MinIO trên cluster nội bộ, nên đảm bảo `minio` service có thể resolve từ pod Spark trong namespace `de-lab`.
+
+### 5) Gỡ bỏ Spark khỏi namespace `de-lab`
+
+Nếu muốn xóa hoàn toàn Spark khỏi namespace, chạy các lệnh sau:
+
+```bash
+kubectl delete sparkapplication hagent-analytics-job -n de-lab --ignore-not-found
+kubectl delete serviceaccount spark-operator-sa -n de-lab --ignore-not-found
+kubectl delete role spark-operator-role -n de-lab --ignore-not-found
+kubectl delete rolebinding spark-operator-role-binding -n de-lab --ignore-not-found
+kubectl delete role spark-operator-controller-role -n de-lab --ignore-not-found
+kubectl delete rolebinding spark-operator-controller-rolebinding -n de-lab --ignore-not-found
+```
+
+Kiểm tra lại:
+
+```bash
+kubectl get all -n de-lab | grep -i spark
+kubectl get sa,role,rolebinding -n de-lab | grep -i spark
+```
+
+Nếu không còn output, nghĩa là Spark đã được gỡ bỏ hoàn toàn khỏi namespace `de-lab`.
 
 ## Kiểm tra Trino
 
