@@ -52,14 +52,13 @@ call_rec_schema = """
 hagent_schema = """
     agentname string,
     logid string,
-    split integer,
-    acdcalls integer,
-    acdtime integer,
+    split long,
+    acdcalls long,
+    acdtime long,
     year string,
     month string,
     day string
 """
-
 # ============================================================
 # 3. Read CALL_REC
 # ============================================================
